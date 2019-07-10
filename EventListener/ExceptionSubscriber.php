@@ -8,6 +8,8 @@
 
 namespace Mango\Bundle\JsonApiBundle\EventListener;
 
+use Doctrine\DBAL\Exception\ConstraintViolationException;
+use Exception;
 use JMS\Serializer\SerializerInterface;
 use Mango\Bundle\JsonApiBundle\MangoJsonApiBundle;
 use Psr\Log\LoggerInterface;
@@ -92,23 +94,58 @@ class ExceptionSubscriber implements EventSubscriberInterface
 
         $exception = $event->getException();
 
-        $this->logger->warning(
-            'Exception has been thrown.',
-            [
-                'exception_code'    => $exception->getCode(),
-                'exception_message' => $exception->getMessage(),
-                'exception_file'    => $exception->getFile(),
-                'exception_trace'   => $exception->getTraceAsString(),
-                'exception_line'    => $exception->getLine()
-            ]
-        );
+        $this->logException($exception, 'Uncaught PHP Exception');
 
         $content = $this->serializer->serialize(
             $exception,
             MangoJsonApiBundle::FORMAT
         );
 
-        $event->setResponse(new JsonApiResponse($content, JsonApiResponse::HTTP_BAD_REQUEST));
+        $event->setResponse(new JsonApiResponse($content, $this->chooseResponseStatusCode($exception)));
         $event->stopPropagation();
+    }
+
+    /**
+     * Logs exception
+     *
+     * @param Exception $exception
+     * @param string    $message
+     *
+     * @return void
+     */
+    private function logException(Exception $exception, string $message)
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $this->logger->critical(
+            $message,
+            [
+                'exception'         => $exception,
+                'exception_class'   => get_class($exception),
+                'exception_code'    => $exception->getCode(),
+                'exception_message' => $exception->getMessage(),
+                'exception_file'    => $exception->getFile(),
+                'exception_line'    => $exception->getLine(),
+                'exception_trace'   => $exception->getTraceAsString(),
+            ]
+        );
+    }
+
+    /**
+     * Chooses which response status code should be sent based on the exception
+     *
+     * @param Exception $exception
+     *
+     * @return int
+     */
+    private function chooseResponseStatusCode(Exception $exception): int
+    {
+        if ($exception instanceof ConstraintViolationException) {
+            return JsonApiResponse::HTTP_BAD_REQUEST;
+        }
+
+        return JsonApiResponse::HTTP_INTERNAL_SERVER_ERROR;
     }
 }
