@@ -19,6 +19,7 @@ services:
             - { name: 'jms_serializer.event_subscriber' }
 
     json_api.serializer:
+        public: true
         class: 'Mango\Bundle\JsonApiBundle\Serializer\Serializer'
         decorates: 'jms_serializer.serializer'
         arguments:
